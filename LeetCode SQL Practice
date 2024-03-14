@@ -1,0 +1,39 @@
+
+# SqlEventsDelta
+# Compute the difference between the latest and the second latest value for each event type.
+
+# WITH ranked_events as( select
+#     event_type,
+#     value,
+#     time,
+#     row_number() over (partition by event_type order by time desc) as rn 
+#     from events
+# )
+
+# select event_type,
+# max(case when rn = 1 then value end) - max(case when rn = 2 then value end) as value
+# from
+# ranked_events
+# where rn <= 2
+# group by event_type
+# having count(*) > 1
+# order by event_type
+
+#sqlworldcup
+# with scores as(
+# select team_id, sum(
+#     case when host_goals > guest_goals then 3
+#     when host_goals = guest_goals then 1
+#     else 0 end) as totalpoints
+# from (
+# select host_team as team_id, host_goals, guest_goals from matches
+# union all select guest_team as team_id, guest_goals, host_goals  from matches
+# ) as all_goals
+# group by team_id
+# )
+
+# select
+# t.team_id, t.team_name, coalesce(s.totalpoints, 0) as totpoint
+# from teams t left join scores s on t.team_id = s.team_id
+# order by COALESCE(s.totalpoints, 0) DESC,
+#     t.team_id;
