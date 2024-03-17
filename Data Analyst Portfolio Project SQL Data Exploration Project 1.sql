@@ -1,3 +1,8 @@
+
+-- Link to Tableau Dashboard
+
+https://public.tableau.com/views/CovidDeath_17107034644050/Dashboard1?:language=en-US&:sid=&:display_count=n&:origin=viz_share_link
+
 SELECT * 
 FROM PortfolioProject..CovidDeaths
 where total_deaths = '576232'
