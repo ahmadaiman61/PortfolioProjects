@@ -1,0 +1,193 @@
+Link to the tableau dashboard
+
+https://public.tableau.com/views/PCVideoGamesSalesStatistic/Dashboard1?:language=en-US&:sid=&:display_count=n&:origin=viz_share_link
+
+--- Data cleaning in Jupyter Notebook
+
+import pandas as pd
+
+df = pd.read_csv("games.csv")
+
+df.drop(columns=['Screenshots', 'Movies', 'AppID'], inplace=True)
+
+df.drop(columns = ['Header image', 'Website', 'Support url', 'Support email', 'Metacritic url'], inplace=True)
+
+df['Release date'] = pd.to_datetime(df['Release date'], errors='coerce')
+
+df['Release date'] = df['Release date'].dt.strftime('%d-%m-%Y')
+
+df['Name'] = df['Name'].str.lower()
+
+import re
+
+df['Name'] = df['Name'].apply(lambda x: re.sub(r'\W+', '', x))
+
+
+df.replace({'\r': '', '\n': '', '\t': ''}, regex=True)
+
+df.drop(columns = ['Reviews'], inplace=True)
+
+# function to check illegal characters to export to excel
+def check_for_illegal_characters(df):
+    illegal_characters = {}
+
+    # Iterate through each column
+    for col in df.columns:
+        illegal_characters[col] = set()
+        # Iterate through each row in the column
+        for i, val in df[col].items():
+            # Check if the value contains illegal characters
+            if isinstance(val, str):
+                illegal_chars = [char for char in val if ord(char) > 127 or ord(char) < 32]
+                if illegal_chars:
+                    illegal_characters[col].update(illegal_chars)
+
+    return illegal_characters
+
+
+illegal_chars = check_for_illegal_characters(df)
+
+
+for col, chars in illegal_chars.items():
+    if chars:
+        print(f"Illegal characters found in column '{col}': {chars}")
+
+
+# function to remove illegal characters from a string
+def remove_illegal_characters(text):
+    return ''.join(char for char in text if ord(char) <= 127 and ord(char) >= 32)
+
+df['Name'] = df['Name'].apply(remove_illegal_characters)
+
+df['About the game'] = df['About the game'].apply(remove_illegal_characters)
+
+df['Supported languages'] = df['Supported languages'].apply(remove_illegal_characters)
+
+df['Notes'] = df['Notes'].apply(remove_illegal_characters)
+
+df['Developers'] = df['Developers'].apply(remove_illegal_characters)
+
+df['Publishers'] = df['Publishers'].apply(remove_illegal_characters)
+
+df.drop(columns = 'About the game')
+
+df.drop(columns = ['Notes','Full audio languages'])
+
+df.to_excel('xsollasteam.xlsx')
+
+--- Queries used to create the dashboard
+
+-- Global pc video game sales over time
+SELECT 
+    Name, 
+    FORMAT(SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) * 1000000, '$#,##0.00') AS Total_Sales,
+    SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) AS Total_Sales_Ori,
+    Year, 
+    Genre, 
+    Publisher 
+FROM 
+    PortfolioProject..xsollasales 
+WHERE 
+    Platform = 'PC' 
+GROUP BY 
+    Name, 
+    Year, 
+    Genre, 
+    Publisher 
+ORDER BY 
+    Total_Sales_Ori DESC;
+
+
+
+-- Region with highest sales on an average
+SELECT Region,
+       Average_Sale,
+       FORMAT(Average_Sale, '$#,##0.00') AS Formatted_Average_Sale
+FROM (
+    SELECT 'North America' AS Region,
+           AVG(NA_Sales * 1000000) AS Average_Sale
+    FROM PortfolioProject..xsollasales
+    WHERE Platform = 'PC'
+    UNION ALL
+    SELECT 'Europe' AS Region,
+           AVG(EU_Sales * 1000000) AS Average_Sale
+    FROM PortfolioProject..xsollasales
+    WHERE Platform = 'PC'
+    UNION ALL
+    SELECT 'Japan' AS Region,
+           AVG(JP_Sales * 1000000) AS Average_Sale
+    FROM PortfolioProject..xsollasales
+    WHERE Platform = 'PC'
+    UNION ALL
+    SELECT 'Other' AS Region,
+           AVG(Other_Sales * 1000000) AS Average_Sale
+    FROM PortfolioProject..xsollasales
+    WHERE Platform = 'PC'
+    UNION ALL
+    SELECT 'Global' AS Region,
+           AVG(Global_Sales * 1000000) AS Average_Sale
+    FROM PortfolioProject..xsollasales
+    WHERE Platform = 'PC'
+) AS Averages;
+
+--Best selling pc games based on genre
+
+SELECT Genre,
+       FORMAT(SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) * 1000000, '$#,##0.00') AS Total_Sales,
+	   SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) AS Total_Sales_Ori
+FROM PortfolioProject..xsollasales
+WHERE Platform = 'PC'
+GROUP BY Genre
+ORDER BY Total_Sales_Ori DESC;
+
+--Top Publisher with highest sales
+SELECT Publisher,
+       FORMAT(SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) * 1000000, '$#,##0.00') AS Total_Sales,
+	   SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) AS Total_Sales_Ori
+FROM PortfolioProject..xsollasales
+GROUP BY Publisher
+ORDER BY Total_Sales_Ori DESC
+
+--Top Publisher with highest sales percent
+
+WITH PublisherSales AS (
+    SELECT Publisher,
+           SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) AS Total_Sales
+    FROM PortfolioProject..xsollasales
+    GROUP BY Publisher
+),
+TotalSales AS (
+    SELECT SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) AS Overall_Sales
+    FROM PortfolioProject..xsollasales
+)
+SELECT PublisherSales.Publisher,
+       PublisherSales.Total_Sales,
+       (PublisherSales.Total_Sales / TotalSales.Overall_Sales) * 100 AS Sales_Percentage
+FROM PublisherSales
+JOIN TotalSales ON 1 = 1 -- Cartesian join to get the overall sales value
+ORDER BY Sales_Percentage DESC;
+
+
+
+--Best selling steam games vs metacritic score and price
+WITH global AS (
+    SELECT Name,
+           FORMAT(SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) * 1000000, '$#,##0.00') AS Total_Sales,
+           SUM(NA_Sales + EU_Sales + JP_Sales + Other_Sales + Global_Sales) AS Total_Sales_Ori,
+           Year,
+           Genre,
+           Publisher
+    FROM PortfolioProject..xsollasales
+    WHERE Platform = 'PC'
+    GROUP BY Name, Year, Genre, Publisher
+),
+steam_dedup AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY Name ORDER BY (SELECT NULL)) AS rn
+    FROM PortfolioProject..xsollasteam
+)
+SELECT g.*, s.[Price], s.[Metacritic score]
+FROM global g
+LEFT JOIN steam_dedup s ON g.Name = s.Name AND s.rn = 1
+WHERE s.[Price] IS NOT NULL AND s.[Metacritic score] IS NOT NULL
+ORDER BY Total_Sales_Ori DESC;
